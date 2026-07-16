@@ -17,8 +17,10 @@ preload.js (contextBridge)
 
 renderer/index.html (Electron renderer process)
   ├─ Three.js: loads/renders the 3D mascot (assets/color_model.glb)
-  ├─ plain HTML/CSS: the speech bubble, close button, loading/error states
-  └─ renderer/config.json: content + tuning values, no code changes needed
+  └─ plain HTML/CSS: the speech bubble, close button, loading/error states
+
+config.json (project root — read by BOTH main.js and the renderer)
+  └─ schedule, tray name, messages, bubble/mascot tuning — no code changes needed
 ```
 
 Electron gives the app its own transparent, borderless, always-on-top OS window;
@@ -36,12 +38,16 @@ Electron wraps a Chromium renderer and a Node.js "main" process in one app. Here
   visible, not a rectangular window chrome. `alwaysOnTop` + `skipTaskbar` make it
   behave like a floating overlay rather than a normal app window.
 - **`screen`** — reads the display's work area to position the window at a screen
-  corner (`SCREEN_EDGE` in [main.js:22](main.js#L22)).
-- **`node-cron`** ([main.js:157](main.js#L157)) — fires `createMascotWindow()` on the
-  cron schedule defined in `SCHEDULE` ([main.js:17](main.js#L17)). This is what will
-  drive "pops up at fixed days/times" once that schedule is finalized.
-- **`Tray`/`Menu`** ([main.js:130](main.js#L130)) — the system tray icon, with a
-  manual "Show mascot now" trigger for testing without waiting on the cron schedule.
+  corner (`SCREEN_EDGE` in [main.js:39](main.js#L39)).
+- **`node-cron`** (`startScheduledTasks()`) — `config.json`'s `schedule` array holds
+  one or more `{ days: [...], time: "HH:MM" }` entries; each is converted to a cron
+  expression (`buildCronExpression()`) and scheduled as its own `cron.schedule(...)`
+  job, so the mascot can pop up at several independent day/time combinations, not
+  just one. All jobs call `createMascotWindow()`.
+- **`Tray`/`Menu`** (`createTray()`) — the system tray icon, labeled with
+  `config.trayName` ("SparkY"), a manual "Show mascot now" trigger for testing
+  without waiting on the schedule, and a read-only listing of the active schedule
+  entries.
 - **`ipcMain`/`contextBridge`** ([main.js:103](main.js#L103), [preload.js](preload.js)) —
   the renderer can't touch Node.js or Electron APIs directly (`contextIsolation: true`,
   `nodeIntegration: false`, standard Electron security practice). `preload.js` exposes
@@ -96,15 +102,27 @@ next to `#canvas-container`, not a 3D object. Its position/size come from
 `config.json` as CSS custom properties (`--bubble-x`/`--bubble-y`) and inline styles,
 so it can be retuned without touching layout code.
 
-## renderer/config.json — the one file non-engineers should edit
+Each time the mascot appears (scheduled or manual), `runMessageSequence()` shows
+every string in `config.json`'s `messages` array in order — each for
+`bubble.messageDisplaySeconds`, with a brief fade between — then calls
+`window.mascot.dismiss()`, which fades the window out and closes it (the tray icon
+is all that's left, ready for the next scheduled trigger or manual click).
 
-- `messages` — array of strings; one is picked at random each time the mascot appears.
+## config.json — the one file non-engineers should edit
+
+Read by `main.js` at startup (`fs.readFileSync`, synchronous — see `loadConfig()`)
+and by the renderer via `fetch('../config.json')`. Both fall back to hardcoded
+defaults if it's missing or malformed.
+
+- `trayName` — label shown on the tray icon tooltip and context menu.
+- `schedule` — array of `{ days: [...], time: "HH:MM" }`. `days` accepts full or
+  3-letter names (`"Mon"`, `"Monday"`), case-insensitive. Add as many entries as
+  needed for different day/time combinations.
+- `messages` — array of strings shown in sequence on every popup.
 - `bubble` — `offsetXPx`/`offsetYPx` (nudge from its default flex position),
-  `maxWidthPx` (wrap width), `fontSizePx`.
+  `maxWidthPx` (wrap width), `fontSizePx`, `messageDisplaySeconds` (how long each
+  message in `messages` stays on screen before advancing to the next).
 - `mascot` — `sizeUnits` (overall model scale), `rotationDeg` (facing angle).
-
-`index.html` `fetch()`s this at startup and falls back to hardcoded defaults if it's
-missing or malformed.
 
 ## Next: animations
 

@@ -201,19 +201,20 @@
     const errorDetail = document.getElementById('error-detail');
     const bubbleEl  = document.getElementById('speech-bubble');
 
-    // Editable settings (messages, bubble position/size, mascot size/rotation)
-    // live in config.json next to this file — edit that instead of this script.
+    // Editable settings (schedule, messages, bubble position/size, mascot
+    // size/rotation) live in config.json at the project root — edit that
+    // instead of this script.
     const DEFAULT_CONFIG = {
       messages: [
         "👋 Hi there! Small acts of inclusion make a big difference.",
       ],
-      bubble: { offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10 },
+      bubble: { offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10, messageDisplaySeconds: 4.5 },
       mascot: { sizeUnits: 0.9, rotationDeg: -81.8 },
     };
 
     async function loadConfig() {
       try {
-        const res = await fetch('./config.json');
+        const res = await fetch('../config.json');
         const loaded = await res.json();
         return {
           messages: loaded.messages?.length ? loaded.messages : DEFAULT_CONFIG.messages,
@@ -227,7 +228,7 @@
     }
 
     const config = await loadConfig();
-    const SAMPLE_MESSAGES = config.messages;
+    const MESSAGES = config.messages;
 
     bubbleEl.style.setProperty('--bubble-x', `${config.bubble.offsetXPx}px`);
     bubbleEl.style.setProperty('--bubble-y', `${config.bubble.offsetYPx}px`);
@@ -239,6 +240,25 @@
       // Force reflow so the transition reliably triggers
       void bubbleEl.offsetWidth;
       bubbleEl.classList.add('visible');
+    }
+
+    function hideSpeechBubble() {
+      bubbleEl.classList.remove('visible');
+    }
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    // Show every configured message in turn, then hand control back to the
+    // main process to fade the window out to the tray.
+    async function runMessageSequence() {
+      const displayMs = Math.max(500, (config.bubble.messageDisplaySeconds || 4.5) * 1000);
+      for (const message of MESSAGES) {
+        showSpeechBubble(message);
+        await sleep(displayMs);
+        hideSpeechBubble();
+        await sleep(350); // let the fade-out finish before the next message
+      }
+      window.mascot.dismiss();
     }
 
     // ── Renderer ──────────────────────────────────────────────────────────
@@ -394,9 +414,8 @@
 
         scene.add(model);
 
-        // Show a sample speech-bubble message shortly after the mascot appears
-        const sample = SAMPLE_MESSAGES[Math.floor(Math.random() * SAMPLE_MESSAGES.length)];
-        setTimeout(() => showSpeechBubble(sample), 400);
+        // Cycle through every configured message, then dismiss back to the tray
+        setTimeout(() => runMessageSequence(), 400);
 
         // Play the first animation clip if present
         if (gltf.animations.length > 0) {

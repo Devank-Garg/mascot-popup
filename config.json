@@ -1,15 +1,24 @@
 {
+  "trayName": "SparkY",
+
+  "schedule": [
+    { "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "time": "16:30" }
+  ],
+
   "messages": [
     "👋 Hi there! Small acts of inclusion make a big difference.",
     "🌈 Diversity is being invited to the party. Inclusion is being asked to dance.",
     "💡 Did you know? Our ERGs are open to everyone — come say hi!"
   ],
+
   "bubble": {
     "offsetXPx": 52,
     "offsetYPx": -19,
     "maxWidthPx": 130,
-    "fontSizePx": 10
+    "fontSizePx": 10,
+    "messageDisplaySeconds": 4.5
   },
+
   "mascot": {
     "sizeUnits": 0.9,
     "rotationDeg": -81.8

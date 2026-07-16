@@ -1,26 +1,45 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 
 let mascotWindow = null;
 let tray = null;
-let scheduledTask = null;
+let scheduledTasks = [];
 
-// ─── Schedule Configuration ───────────────────────────────────────────────
-// Edit this to change when the mascot appears.
-// Format: 'second minute hour day month weekday'
-// Examples:
-//   '0 9 * * 1-5'   → Every weekday at 9:00 AM
-//   '0 9 * * *'     → Every day at 9:00 AM
-//   '0 9,17 * * *'  → Every day at 9:00 AM and 5:00 PM
-//   '*/30 * * * *'  → Every 30 minutes (for testing)
-const SCHEDULE = '0 9 * * 1-5'; // Weekdays at 9:00 AM
+// ─── Shared config (config.json at project root) ──────────────────────────
+// Holds the appearance schedule, tray name, mascot messages, bubble/model
+// tuning — see TECHNICAL.md. Edit that file, not this one, for day-to-day changes.
+const DEFAULT_CONFIG = {
+  trayName: 'SparkY',
+  schedule: [{ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], time: '09:00' }],
+};
+
+function loadConfig() {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8');
+    const loaded = JSON.parse(raw);
+    return {
+      ...DEFAULT_CONFIG,
+      ...loaded,
+      schedule: Array.isArray(loaded.schedule) && loaded.schedule.length
+        ? loaded.schedule
+        : DEFAULT_CONFIG.schedule,
+    };
+  } catch (err) {
+    console.warn('[mascot] failed to load config.json, using defaults:', err.message);
+    return DEFAULT_CONFIG;
+  }
+}
+
+const config = loadConfig();
 
 // ─── Window Settings ──────────────────────────────────────────────────────
 const WINDOW_WIDTH  = 460;
 const WINDOW_HEIGHT = 300;
 const SCREEN_EDGE   = 'bottom-right'; // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
-const AUTO_HIDE_MS  = 0;             // ms before auto-dismissing (0 = stay until clicked) — 0 for now, mascot always stays up
+// Auto-hide is driven by the renderer once it has cycled through every
+// configured message (see renderer/index.html's runMessageSequence()).
 
 // ─── Window creation ──────────────────────────────────────────────────────
 function createMascotWindow() {
@@ -66,11 +85,6 @@ function createMascotWindow() {
   mascotWindow.setOpacity(0);
   mascotWindow.show();
   fadeIn(mascotWindow);
-
-  // Auto-hide after delay
-  if (AUTO_HIDE_MS > 0) {
-    setTimeout(() => dismissMascot(), AUTO_HIDE_MS);
-  }
 
   mascotWindow.on('closed', () => { mascotWindow = null; });
 }
@@ -126,19 +140,69 @@ ipcMain.on('move-window', (event, data) => {
   }
 });
 
+// ─── Scheduling ────────────────────────────────────────────────────────────
+// Converts config.json's { days: [...], time: "HH:MM" } entries into cron
+// expressions and schedules one node-cron job per entry — this is what lets
+// the popup fire on multiple day/time combinations, not just one.
+const DAY_NUM = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+function dayToCronNum(day) {
+  const key = String(day).trim().slice(0, 3).toLowerCase();
+  if (!(key in DAY_NUM)) throw new Error(`Unrecognized day name: "${day}"`);
+  return DAY_NUM[key];
+}
+
+function buildCronExpression({ days, time }) {
+  const [hour, minute] = String(time).split(':').map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    throw new Error(`Invalid time "${time}", expected "HH:MM"`);
+  }
+  const dow = (Array.isArray(days) ? days : [days]).map(dayToCronNum).join(',');
+  return `${minute} ${hour} * * ${dow}`;
+}
+
+function describeSchedule({ days, time }) {
+  const dayList = Array.isArray(days) ? days.join(',') : days;
+  return `${dayList} @ ${time}`;
+}
+
+function startScheduledTasks() {
+  scheduledTasks = config.schedule.map((entry) => {
+    try {
+      const expr = buildCronExpression(entry);
+      return cron.schedule(expr, () => {
+        console.log(`[mascot] Scheduled trigger (${describeSchedule(entry)}): ${new Date().toLocaleTimeString()}`);
+        createMascotWindow();
+      });
+    } catch (err) {
+      console.error(`[mascot] Skipping invalid schedule entry ${JSON.stringify(entry)}:`, err.message);
+      return null;
+    }
+  }).filter(Boolean);
+}
+
 // ─── Tray icon ────────────────────────────────────────────────────────────
 function createTray() {
-  // Blank 16x16 tray icon (replace tray-icon.png with your own if desired)
+  // Placeholder 16x16 tray icon — replace assets/tray-icon.png with the real
+  // SparkY icon whenever it's ready, no code changes needed.
   const icon = nativeImage.createFromPath(
     path.join(__dirname, 'assets', 'tray-icon.png')
   );
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-  tray.setToolTip('Mascot Scheduler');
+  tray.setToolTip(config.trayName);
+
+  const scheduleItems = config.schedule.map((entry) => ({
+    label: describeSchedule(entry),
+    enabled: false,
+  }));
 
   const contextMenu = Menu.buildFromTemplate([
+    { label: config.trayName, enabled: false },
+    { type: 'separator' },
     { label: 'Show mascot now', click: () => createMascotWindow() },
     { type: 'separator' },
-    { label: `Schedule: ${SCHEDULE}`, enabled: false },
+    { label: 'Schedule:', enabled: false },
+    ...scheduleItems,
     { type: 'separator' },
     { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
@@ -149,17 +213,9 @@ function createTray() {
 // ─── App lifecycle ────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createTray();
+  startScheduledTasks();
 
-  // For now: mascot stays up all the time, so show it immediately on launch.
-  createMascotWindow();
-
-  // Start the scheduler
-  scheduledTask = cron.schedule(SCHEDULE, () => {
-    console.log(`[mascot] Scheduled trigger: ${new Date().toLocaleTimeString()}`);
-    createMascotWindow();
-  });
-
-  console.log(`[mascot] Running. Scheduled: "${SCHEDULE}"`);
+  console.log(`[mascot] ${config.trayName} running. Schedule: ${config.schedule.map(describeSchedule).join(' | ')}`);
   console.log('[mascot] Right-click the tray icon to show manually or quit.');
 });
 
@@ -169,5 +225,5 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', () => {
-  if (scheduledTask) scheduledTask.stop();
+  scheduledTasks.forEach((task) => task.stop());
 });
