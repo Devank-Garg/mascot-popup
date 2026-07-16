@@ -246,6 +246,7 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
 
@@ -269,11 +270,33 @@
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
     keyLight.position.set(3, 5, 3);
     keyLight.castShadow = true;
+    // Tight shadow-camera frustum since the mascot is only ~1 unit tall —
+    // keeps the shadow map resolution focused instead of spread over a huge area.
+    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.camera.near = 0.1;
+    keyLight.shadow.camera.far = 10;
+    keyLight.shadow.camera.left = -1.5;
+    keyLight.shadow.camera.right = 1.5;
+    keyLight.shadow.camera.top = 1.5;
+    keyLight.shadow.camera.bottom = -1.5;
+    keyLight.shadow.bias = -0.002;
+    keyLight.shadow.radius = 4;
     scene.add(keyLight);
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
     fillLight.position.set(-3, 2, -3);
     scene.add(fillLight);
+
+    // Invisible shadow-catcher plane — only its shadowed area renders (as
+    // translucent dark), so the transparent window background shows through
+    // everywhere else. Grounds the mascot instead of leaving it floating.
+    const shadowPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(6, 6),
+      new THREE.ShadowMaterial({ opacity: 0.35 })
+    );
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.receiveShadow = true;
+    scene.add(shadowPlane);
 
     // Improve color rendering for sRGB glTF textures and materials
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -332,6 +355,9 @@
           const modelCenter = box.getCenter(new THREE.Vector3());
           controls.target.copy(modelCenter);
           camera.lookAt(modelCenter);
+
+          // Sit the shadow-catcher plane right at the model's feet
+          shadowPlane.position.y = box.min.y;
 
         // Ensure mesh materials use correct color space for textures and receive shadows
         model.traverse((node) => {
