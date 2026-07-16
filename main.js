@@ -12,6 +12,7 @@ let scheduledTasks = [];
 // tuning — see TECHNICAL.md. Edit that file, not this one, for day-to-day changes.
 const DEFAULT_CONFIG = {
   trayName: 'SparkY',
+  devMode: false,
   schedule: [{ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], time: '09:00' }],
 };
 
@@ -214,6 +215,14 @@ function createTray() {
 app.whenReady().then(() => {
   createTray();
   startScheduledTasks();
+
+  // devMode: true in config.json shows the mascot immediately on launch, so
+  // you don't have to keep editing schedule.time to match the current time
+  // while developing. Set it back to false before shipping.
+  if (config.devMode) {
+    console.log('[mascot] devMode is on — showing immediately (ignoring schedule for this launch).');
+    createMascotWindow();
+  }
 
   console.log(`[mascot] ${config.trayName} running. Schedule: ${config.schedule.map(describeSchedule).join(' | ')}`);
   console.log('[mascot] Right-click the tray icon to show manually or quit.');
