@@ -115,10 +115,11 @@ and by the renderer via `fetch('../config.json')`. Both fall back to hardcoded
 defaults if it's missing or malformed.
 
 - `trayName` — label shown on the tray icon tooltip and context menu.
-- `devMode` — when `true`, shows the mascot immediately on every app launch,
-  ignoring `schedule` for that launch (so you don't have to keep editing
-  `schedule.time` to match the current time while developing). Set to `false`
-  before shipping — the tray's "Show mascot now" item still works either way.
+- `devMode` — when `true`: (1) shows the mascot immediately on every app
+  launch, ignoring `schedule` for that launch, and (2) the renderer loops the
+  message sequence forever instead of auto-dismissing after one pass, so the
+  popup stays up while you're iterating on it. Set to `false` before shipping
+  — the tray's "Show mascot now" item still works either way.
 - `schedule` — array of `{ days: [...], time: "HH:MM" }`. `days` accepts full or
   3-letter names (`"Mon"`, `"Monday"`), case-insensitive. Add as many entries as
   needed for different day/time combinations.

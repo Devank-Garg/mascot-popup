@@ -205,6 +205,7 @@
     // size/rotation) live in config.json at the project root — edit that
     // instead of this script.
     const DEFAULT_CONFIG = {
+      devMode: false,
       messages: [
         "👋 Hi there! Small acts of inclusion make a big difference.",
       ],
@@ -217,6 +218,7 @@
         const res = await fetch('../config.json');
         const loaded = await res.json();
         return {
+          devMode: !!loaded.devMode,
           messages: loaded.messages?.length ? loaded.messages : DEFAULT_CONFIG.messages,
           bubble: { ...DEFAULT_CONFIG.bubble, ...loaded.bubble },
           mascot: { ...DEFAULT_CONFIG.mascot, ...loaded.mascot },
@@ -249,15 +251,18 @@
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // Show every configured message in turn, then hand control back to the
-    // main process to fade the window out to the tray.
+    // main process to fade the window out to the tray. In devMode, loop
+    // forever instead so the popup stays up while you're iterating on it.
     async function runMessageSequence() {
       const displayMs = Math.max(500, (config.bubble.messageDisplaySeconds || 4.5) * 1000);
-      for (const message of MESSAGES) {
-        showSpeechBubble(message);
-        await sleep(displayMs);
-        hideSpeechBubble();
-        await sleep(350); // let the fade-out finish before the next message
-      }
+      do {
+        for (const message of MESSAGES) {
+          showSpeechBubble(message);
+          await sleep(displayMs);
+          hideSpeechBubble();
+          await sleep(350); // let the fade-out finish before the next message
+        }
+      } while (config.devMode);
       window.mascot.dismiss();
     }
 
