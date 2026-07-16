@@ -1,0 +1,47 @@
+{
+  "name": "mascot-popup",
+  "version": "1.0.0",
+  "description": "Desktop mascot popup scheduler",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.ymsli.mascot-popup",
+    "productName": "Mascot Popup",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/tray-icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "runAfterFinish": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "assets/**",
+      "node_modules/**"
+    ],
+    "extraFiles": [
+      {
+        "from": "assets/mascot.glb",
+        "to": "assets/mascot.glb"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron": "^43.1.1",
+    "node-cron": "^4.6.0",
+    "three": "^0.177.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.0.12"
+  }
+}

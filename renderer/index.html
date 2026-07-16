@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob: data:;" />
+  <title>Mascot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Close (×) button — top-right corner */
+    #close-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 14px;
+      line-height: 26px;
+      text-align: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #canvas-container:hover #close-btn { opacity: 1; }
+    #close-btn:hover { background: rgba(200, 50, 50, 0.7); }
+
+    /* Loading spinner */
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: rgba(255,255,255,0.7);
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      pointer-events: none;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: rgba(255,255,255,0.7);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error state */
+    #error-msg {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,180,180,0.9);
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      text-align: center;
+      padding: 20px;
+      gap: 8px;
+    }
+    #error-msg.visible { display: flex; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>Loading mascot…</span>
+    </div>
+    <div id="error-msg">
+      <span style="font-size:24px">⚠️</span>
+      <strong>Could not load mascot.glb</strong>
+      <span id="error-detail">Make sure mascot.glb is in the assets/ folder.</span>
+    </div>
+    <button id="close-btn" title="Dismiss">✕</button>
+  </div>
+
+  <!--
+    Three.js and GLTFLoader are loaded from the local node_modules copy
+    that gets bundled alongside the app — no internet needed at runtime.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../node_modules/three/build/three.module.js",
+        "three/addons/": "../node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const container = document.getElementById('canvas-container');
+    const loadingEl = document.getElementById('loading');
+    const errorEl   = document.getElementById('error-msg');
+    const errorDetail = document.getElementById('error-detail');
+
+    // ── Renderer ──────────────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    container.appendChild(renderer.domElement);
+
+    // ── Scene ──────────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    // No background — keeps the window truly transparent
+
+    // ── Camera ──────────────────────────────────────────────────────────────
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      container.clientWidth / container.clientHeight,
+      0.01,
+      100
+    );
+    camera.position.set(0, 1, 3);
+
+    // ── Lights ────────────────────────────────────────────────────────────
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambient);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    keyLight.position.set(3, 5, 3);
+    keyLight.castShadow = true;
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    fillLight.position.set(-3, 2, -3);
+    scene.add(fillLight);
+
+    // Improve color rendering for sRGB glTF textures and materials
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
+    // ── OrbitControls (optional — lets the user spin the model) ─────────
+      const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enablePan   = false;
+    controls.enableZoom  = false;
+    controls.autoRotate  = false;      // disable auto-spin
+    controls.autoRotateSpeed = 0;
+      controls.target.set(0, 0.8, 0);
+    controls.update();
+
+    // ── Load the GLB ──────────────────────────────────────────────────────
+    const loader = new GLTFLoader();
+    const glbPath = '../assets/color_model.glb';
+    console.log('[mascot] Attempting to load GLB:', glbPath);
+    loader.load(
+      glbPath,
+
+      // onLoad
+      (gltf) => {
+        loadingEl.style.display = 'none';
+        console.log('[mascot] GLTF loaded:', gltf);
+
+        const model = gltf.scene;
+          // Default yaw to apply to the model (radians). Adjust if model faces sideways.
+          const DEFAULT_MODEL_ROT_Y = -Math.PI / 2.2; // set negative to turn left, positive to turn right
+
+        // Centre and fit the model automatically
+        const box = new THREE.Box3().setFromObject(model);
+        const size   = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale  = 1.8 / maxDim;
+
+        model.scale.setScalar(scale);
+        model.position.sub(center.multiplyScalar(scale));
+
+        // Ensure the model's bottom sits above the scene origin so legs aren't cut off
+        // Recompute bounding box after scaling/centering and lift if needed.
+        box.setFromObject(model);
+        const minY = box.min.y;
+        if (Number.isFinite(minY)) {
+          // Move model up so minY becomes a small positive value (padding 0.02)
+          model.position.y -= (minY - 0.02);
+        }
+
+          // Apply default rotation so the model faces the camera correctly out-of-the-box
+          model.rotation.y = DEFAULT_MODEL_ROT_Y;
+
+          // Recompute center and align controls/camera to the model center
+          box.setFromObject(model);
+          const modelCenter = box.getCenter(new THREE.Vector3());
+          controls.target.copy(modelCenter);
+          camera.lookAt(modelCenter);
+
+        // Ensure mesh materials use correct color space for textures and receive shadows
+        model.traverse((node) => {
+          if (node.isMesh) {
+            const mat = node.material;
+            if (mat) {
+              // Log material info for debugging colors
+              try {
+                console.log('[mascot] mesh:', node.name || '(unnamed)', 'material:', mat.type, 'color:', mat.color ? mat.color.getHexString() : null);
+                if (mat.map) console.log('[mascot]  has map (texture) - uuid:', mat.map.uuid);
+                if (mat.emissiveMap) console.log('[mascot]  has emissiveMap - uuid:', mat.emissiveMap.uuid);
+                if (mat.metalnessMap) console.log('[mascot]  has metalnessMap - uuid:', mat.metalnessMap.uuid);
+              } catch (e) {
+                console.warn('[mascot] failed to read material info', e);
+              }
+              // Ensure common texture maps are interpreted as sRGB for correct colors
+              // (base material color is already treated as sRGB by three's color management,
+              // and GLTFLoader sets colorSpace on these maps automatically — this just guards
+              // against any that slipped through as linear)
+              ['map', 'emissiveMap'].forEach((k) => {
+                if (mat[k] && mat[k].colorSpace !== THREE.SRGBColorSpace) {
+                  mat[k].colorSpace = THREE.SRGBColorSpace;
+                }
+              });
+
+              // Normal and metallic/roughness maps should remain linear (do not change)
+
+              mat.needsUpdate = true;
+            }
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+
+        scene.add(model);
+
+        // Play the first animation clip if present
+        if (gltf.animations.length > 0) {
+          const mixer = new THREE.AnimationMixer(model);
+          mixer.clipAction(gltf.animations[0]).play();
+
+          const clock = new THREE.Clock();
+          renderer.setAnimationLoop(() => {
+            const delta = clock.getDelta();
+            mixer.update(delta);
+            // Keep renderer/camera size and DPR in sync (fixes scaling when window moves between displays)
+            ensureRendererSize();
+            controls.update();
+            renderer.render(scene, camera);
+          });
+        } else {
+          renderer.setAnimationLoop(() => {
+            // Keep renderer/camera size and DPR in sync
+            ensureRendererSize();
+            controls.update();
+            renderer.render(scene, camera);
+          });
+        }
+      },
+
+      // onProgress
+      (xhr) => {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        const span = loadingEl.querySelector('span');
+        if (span) span.textContent = `Loading… ${pct}%`;
+      },
+
+      // onError
+      (err) => {
+        loadingEl.style.display = 'none';
+        errorEl.classList.add('visible');
+        errorDetail.textContent = String(err.message || err);
+        console.error('GLTFLoader error:', err);
+      }
+    );
+
+    // ── Resize handler ─────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // Ensure renderer size and device pixel ratio are kept up-to-date.
+    function ensureRendererSize() {
+      const width = Math.max(1, container.clientWidth);
+      const height = Math.max(1, container.clientHeight);
+      const DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      // Only update if size or DPR changed to avoid unnecessary work
+      const needResize = renderer.domElement.width !== Math.floor(width * DPR) ||
+                         renderer.domElement.height !== Math.floor(height * DPR) ||
+                         renderer.getPixelRatio() !== DPR;
+      if (needResize) {
+        renderer.setPixelRatio(DPR);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+    }
+
+    // Call once to prime sizes
+    ensureRendererSize();
+
+    // ── Close button ───────────────────────────────────────────────────────
+    const closeBtn = document.getElementById('close-btn');
+    closeBtn.addEventListener('click', () => {
+      window.mascot.dismiss();
+    });
+
+    // ── Right-drag to move the window (left-drag is reserved for
+    // OrbitControls' rotate gesture). ──────────────────────────────────────
+    renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    let dragging = false;
+    let lastScreenX = 0;
+    let lastScreenY = 0;
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (e.button !== 2) return;
+      dragging = true;
+      lastScreenX = e.screenX;
+      lastScreenY = e.screenY;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.screenX - lastScreenX;
+      const dy = e.screenY - lastScreenY;
+      lastScreenX = e.screenX;
+      lastScreenY = e.screenY;
+      window.mascot.moveWindow(dx, dy);
+    });
+
+    window.addEventListener('pointerup', (e) => {
+      if (e.button === 2) dragging = false;
+    });
+  </script>
+</body>
+</html>
