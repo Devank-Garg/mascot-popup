@@ -134,30 +134,28 @@
       transform: scale(1) translate(var(--bubble-x), var(--bubble-y));
     }
 
-    /* Cloud "puffs" along the right edge, pointing toward the mascot */
+    /* Speech-bubble tail (pointed, not a thought-bubble's round puffs) —
+       an outer red triangle behind a slightly smaller white one creates
+       the appearance of a bordered pointer aimed at the mascot. */
     #speech-bubble::before {
-      content: "";
-      position: absolute;
-      right: -9px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 14px;
-      height: 14px;
-      background: #ffffff;
-      border: 2px solid #c8102e;
-      border-radius: 50%;
-    }
-    #speech-bubble::after {
       content: "";
       position: absolute;
       right: -16px;
       top: 50%;
-      transform: translateY(-70%);
-      width: 8px;
-      height: 8px;
-      background: #ffffff;
-      border: 2px solid #c8102e;
-      border-radius: 50%;
+      transform: translateY(-50%);
+      border-style: solid;
+      border-width: 9px 0 9px 16px;
+      border-color: transparent transparent transparent #c8102e;
+    }
+    #speech-bubble::after {
+      content: "";
+      position: absolute;
+      right: -12.5px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-style: solid;
+      border-width: 7px 0 7px 13px;
+      border-color: transparent transparent transparent #ffffff;
     }
   </style>
 </head>
@@ -203,12 +201,38 @@
     const errorDetail = document.getElementById('error-detail');
     const bubbleEl  = document.getElementById('speech-bubble');
 
-    // Sample DEI messages — the DEI team will supply the real copy later.
-    const SAMPLE_MESSAGES = [
-      "👋 Hi there! Small acts of inclusion make a big difference.",
-      "🌈 Diversity is being invited to the party. Inclusion is being asked to dance.",
-      "💡 Did you know? Our ERGs are open to everyone — come say hi!",
-    ];
+    // Editable settings (messages, bubble position/size, mascot size/rotation)
+    // live in config.json next to this file — edit that instead of this script.
+    const DEFAULT_CONFIG = {
+      messages: [
+        "👋 Hi there! Small acts of inclusion make a big difference.",
+      ],
+      bubble: { offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10 },
+      mascot: { sizeUnits: 0.9, rotationDeg: -81.8 },
+    };
+
+    async function loadConfig() {
+      try {
+        const res = await fetch('./config.json');
+        const loaded = await res.json();
+        return {
+          messages: loaded.messages?.length ? loaded.messages : DEFAULT_CONFIG.messages,
+          bubble: { ...DEFAULT_CONFIG.bubble, ...loaded.bubble },
+          mascot: { ...DEFAULT_CONFIG.mascot, ...loaded.mascot },
+        };
+      } catch (e) {
+        console.warn('[mascot] failed to load config.json, using defaults', e);
+        return DEFAULT_CONFIG;
+      }
+    }
+
+    const config = await loadConfig();
+    const SAMPLE_MESSAGES = config.messages;
+
+    bubbleEl.style.setProperty('--bubble-x', `${config.bubble.offsetXPx}px`);
+    bubbleEl.style.setProperty('--bubble-y', `${config.bubble.offsetYPx}px`);
+    bubbleEl.style.maxWidth = `${config.bubble.maxWidthPx}px`;
+    bubbleEl.style.fontSize = `${config.bubble.fontSizePx}px`;
 
     function showSpeechBubble(text) {
       bubbleEl.textContent = text;
@@ -278,15 +302,15 @@
         console.log('[mascot] GLTF loaded:', gltf);
 
         const model = gltf.scene;
-          // Default yaw to apply to the model (radians). Adjust if model faces sideways.
-          const DEFAULT_MODEL_ROT_Y = -Math.PI / 2.2; // set negative to turn left, positive to turn right
+          // Default yaw to apply to the model, sourced from config.json (degrees).
+          const DEFAULT_MODEL_ROT_Y = config.mascot.rotationDeg * (Math.PI / 180);
 
         // Centre and fit the model automatically
         const box = new THREE.Box3().setFromObject(model);
         const size   = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale  = 0.9 / maxDim;
+        const scale  = config.mascot.sizeUnits / maxDim;
 
         model.scale.setScalar(scale);
         model.position.sub(center.multiplyScalar(scale));
