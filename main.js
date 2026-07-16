@@ -17,7 +17,7 @@ let scheduledTask = null;
 const SCHEDULE = '0 9 * * 1-5'; // Weekdays at 9:00 AM
 
 // ─── Window Settings ──────────────────────────────────────────────────────
-const WINDOW_WIDTH  = 240;
+const WINDOW_WIDTH  = 460;
 const WINDOW_HEIGHT = 300;
 const SCREEN_EDGE   = 'bottom-right'; // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 const AUTO_HIDE_MS  = 0;             // ms before auto-dismissing (0 = stay until clicked) — 0 for now, mascot always stays up

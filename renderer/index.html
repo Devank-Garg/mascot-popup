@@ -16,8 +16,26 @@
       user-select: none;
     }
 
-    #canvas-container {
+    #app {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
       width: 100%;
+      height: 100%;
+    }
+
+    #bubble-wrap {
+      flex: 1 1 auto;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      position: relative;
+      padding: 10px 4px 10px 10px;
+    }
+
+    #canvas-container {
+      flex: 0 0 38%;
       height: 100%;
       position: relative;
     }
@@ -89,20 +107,77 @@
       gap: 8px;
     }
     #error-msg.visible { display: flex; }
+
+    /* Cloud-style speech bubble — sits beside the mascot, tail points right */
+    #speech-bubble {
+      position: relative;
+      --bubble-x: 52px;
+      --bubble-y: -19px;
+      transform: scale(0.9) translate(var(--bubble-x), var(--bubble-y));
+      max-width: 130px;
+      background: #ffffff;
+      color: #1a1a1a;
+      border: 2px solid #c8102e;
+      font-family: system-ui, sans-serif;
+      font-size: 10px;
+      line-height: 1.35;
+      text-align: center;
+      padding: 8px 10px;
+      border-radius: 12px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      pointer-events: none;
+    }
+    #speech-bubble.visible {
+      opacity: 1;
+      transform: scale(1) translate(var(--bubble-x), var(--bubble-y));
+    }
+
+    /* Cloud "puffs" along the right edge, pointing toward the mascot */
+    #speech-bubble::before {
+      content: "";
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      background: #ffffff;
+      border: 2px solid #c8102e;
+      border-radius: 50%;
+    }
+    #speech-bubble::after {
+      content: "";
+      position: absolute;
+      right: -16px;
+      top: 50%;
+      transform: translateY(-70%);
+      width: 8px;
+      height: 8px;
+      background: #ffffff;
+      border: 2px solid #c8102e;
+      border-radius: 50%;
+    }
   </style>
 </head>
 <body>
-  <div id="canvas-container">
-    <div id="loading">
-      <div class="spinner"></div>
-      <span>Loading mascot…</span>
+  <div id="app">
+    <div id="bubble-wrap">
+      <div id="speech-bubble"></div>
     </div>
-    <div id="error-msg">
-      <span style="font-size:24px">⚠️</span>
-      <strong>Could not load mascot.glb</strong>
-      <span id="error-detail">Make sure mascot.glb is in the assets/ folder.</span>
+    <div id="canvas-container">
+      <div id="loading">
+        <div class="spinner"></div>
+        <span>Loading mascot…</span>
+      </div>
+      <div id="error-msg">
+        <span style="font-size:24px">⚠️</span>
+        <strong>Could not load mascot.glb</strong>
+        <span id="error-detail">Make sure mascot.glb is in the assets/ folder.</span>
+      </div>
+      <button id="close-btn" title="Dismiss">✕</button>
     </div>
-    <button id="close-btn" title="Dismiss">✕</button>
   </div>
 
   <!--
@@ -126,6 +201,21 @@
     const loadingEl = document.getElementById('loading');
     const errorEl   = document.getElementById('error-msg');
     const errorDetail = document.getElementById('error-detail');
+    const bubbleEl  = document.getElementById('speech-bubble');
+
+    // Sample DEI messages — the DEI team will supply the real copy later.
+    const SAMPLE_MESSAGES = [
+      "👋 Hi there! Small acts of inclusion make a big difference.",
+      "🌈 Diversity is being invited to the party. Inclusion is being asked to dance.",
+      "💡 Did you know? Our ERGs are open to everyone — come say hi!",
+    ];
+
+    function showSpeechBubble(text) {
+      bubbleEl.textContent = text;
+      // Force reflow so the transition reliably triggers
+      void bubbleEl.offsetWidth;
+      bubbleEl.classList.add('visible');
+    }
 
     // ── Renderer ──────────────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -196,7 +286,7 @@
         const size   = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale  = 1.8 / maxDim;
+        const scale  = 0.9 / maxDim;
 
         model.scale.setScalar(scale);
         model.position.sub(center.multiplyScalar(scale));
@@ -253,6 +343,10 @@
         });
 
         scene.add(model);
+
+        // Show a sample speech-bubble message shortly after the mascot appears
+        const sample = SAMPLE_MESSAGES[Math.floor(Math.random() * SAMPLE_MESSAGES.length)];
+        setTimeout(() => showSpeechBubble(sample), 400);
 
         // Play the first animation clip if present
         if (gltf.animations.length > 0) {
