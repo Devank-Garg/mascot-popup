@@ -152,6 +152,36 @@ and versioning, unlike a plain NSIS EXE). Key `package.json` `build` settings:
 For silent deployment via Intune, the generated MSI already supports the
 standard `msiexec /i "Mascot Popup 1.0.0.msi" /quiet` install command.
 
+### Gotcha: GLTFLoader/OrbitControls go missing in a packaged build
+
+`renderer/index.html` does **not** import `GLTFLoader`/`OrbitControls` from
+`node_modules/three/examples/jsm/` — it imports them from
+`renderer/vendor/three-addons/` instead, which is a deliberate workaround, not
+an accident.
+
+`electron-builder`'s node_modules packager
+(`app-builder-lib/out/util/NodeModuleCopyHelper.js`) hardcodes any top-level
+directory literally named `example`/`examples` inside a package as
+always-excluded when copying `node_modules` into the app — and Three.js keeps
+its addons under `three/examples/jsm/`. The MSI/`--dir` build silently drops
+that entire folder; `npm start` (unpackaged, reading straight off disk) is
+unaffected, so this only shows up after building — the popup gets stuck on
+"Loading mascot…" with `net::ERR_FILE_NOT_FOUND` for `GLTFLoader.js`/
+`OrbitControls.js` in DevTools console.
+
+The fix: `GLTFLoader.js`, `OrbitControls.js`, and `BufferGeometryUtils.js`
+(the one file `GLTFLoader` imports internally) are copied into
+`renderer/vendor/three-addons/`, which ships via the `renderer/**` files glob
+like any other renderer asset — untouched by the node_modules exclusion rule.
+The import map (`renderer/index.html`) points `three/addons/` at that vendored
+copy instead of `node_modules/three/examples/jsm/`. Three's core
+(`node_modules/three/build/three.module.js`) is unaffected since it isn't
+under a folder named `example`/`examples`.
+
+If Three.js is ever upgraded, re-copy those same three files from the new
+`node_modules/three/examples/jsm/` into `renderer/vendor/three-addons/`
+(same relative structure) rather than reverting the import map.
+
 ## Next: animations
 
 The mascot models currently have no baked animation clips or skeleton — they're

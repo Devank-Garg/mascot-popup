@@ -206,14 +206,20 @@
   </div>
 
   <!--
-    Three.js and GLTFLoader are loaded from the local node_modules copy
-    that gets bundled alongside the app — no internet needed at runtime.
+    Three.js core is loaded from the local node_modules copy (no internet
+    needed at runtime). GLTFLoader/OrbitControls are loaded from
+    renderer/vendor/three-addons/, NOT node_modules/three/examples/jsm/ —
+    electron-builder's packager hardcodes any directory literally named
+    "example"/"examples" as always-excluded from node_modules when bundling
+    (see NodeModuleCopyHelper.js), so those addon files would silently go
+    missing from a packaged build. Vendoring sidesteps that entirely — see
+    TECHNICAL.md.
   -->
   <script type="importmap">
     {
       "imports": {
         "three": "../node_modules/three/build/three.module.js",
-        "three/addons/": "../node_modules/three/examples/jsm/"
+        "three/addons/": "./vendor/three-addons/"
       }
     }
   </script>
