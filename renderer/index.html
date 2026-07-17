@@ -126,12 +126,34 @@
       border-radius: 12px;
       box-shadow: 0 4px 14px rgba(0,0,0,0.25);
       opacity: 0;
-      transition: opacity 0.35s ease, transform 0.35s ease;
+      transition: opacity 0.35s ease, transform 0.35s ease, box-shadow 1.6s ease-in-out;
       pointer-events: none;
     }
     #speech-bubble.visible {
       opacity: 1;
       transform: scale(1) translate(var(--bubble-x), var(--bubble-y));
+      animation: bubble-glow 2.4s ease-in-out infinite;
+    }
+    @keyframes bubble-glow {
+      0%, 100% { box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 6px 0 rgba(255,201,60,0.35); }
+      50%      { box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 14px 3px rgba(255,201,60,0.75); }
+    }
+
+    /* Twinkling sparkle stars around the bubble */
+    .sparkle {
+      position: absolute;
+      font-size: 11px;
+      line-height: 1;
+      pointer-events: none;
+      animation: sparkle-twinkle 1.8s ease-in-out infinite;
+      filter: drop-shadow(0 0 2px rgba(255,215,0,0.8));
+    }
+    .sparkle-1 { top: -8px;  left: -6px;  font-size: 13px; animation-delay: 0s; }
+    .sparkle-2 { top: -4px;  right: 22px; font-size: 9px;  animation-delay: 0.5s; }
+    .sparkle-3 { bottom: -9px; left: 18px; font-size: 10px; animation-delay: 1s; }
+    @keyframes sparkle-twinkle {
+      0%, 100% { opacity: 0.15; transform: scale(0.5) rotate(0deg); }
+      50%      { opacity: 1;    transform: scale(1.2) rotate(20deg); }
     }
 
     /* Speech-bubble tail (pointed, not a thought-bubble's round puffs) —
@@ -162,7 +184,12 @@
 <body>
   <div id="app">
     <div id="bubble-wrap">
-      <div id="speech-bubble"></div>
+      <div id="speech-bubble">
+        <span class="sparkle sparkle-1">✨</span>
+        <span class="sparkle sparkle-2">✨</span>
+        <span class="sparkle sparkle-3">✨</span>
+        <span id="bubble-text"></span>
+      </div>
     </div>
     <div id="canvas-container">
       <div id="loading">
@@ -200,6 +227,7 @@
     const errorEl   = document.getElementById('error-msg');
     const errorDetail = document.getElementById('error-detail');
     const bubbleEl  = document.getElementById('speech-bubble');
+    const bubbleTextEl = document.getElementById('bubble-text');
 
     // Editable settings (schedule, messages, bubble position/size, mascot
     // size/rotation) live in config.json at the project root — edit that
@@ -238,7 +266,7 @@
     bubbleEl.style.fontSize = `${config.bubble.fontSizePx}px`;
 
     function showSpeechBubble(text) {
-      bubbleEl.textContent = text;
+      bubbleTextEl.textContent = text;
       // Force reflow so the transition reliably triggers
       void bubbleEl.offsetWidth;
       bubbleEl.classList.add('visible');
