@@ -48,6 +48,15 @@ Electron wraps a Chromium renderer and a Node.js "main" process in one app. Here
   `config.trayName` ("SparkY"), a manual "Show mascot now" trigger for testing
   without waiting on the schedule, and a read-only listing of the active schedule
   entries.
+- **`app.requestSingleInstanceLock()`** — sparkY is a background tray app, often
+  auto-started at login, so it's frequently already running when someone clicks its
+  Start Menu/Desktop icon. Without this lock, that click launches a second full
+  Electron process (each with its own tray icon, cron jobs, etc.) instead of doing
+  anything useful. Every launch after the first calls `app.quit()` immediately (via
+  a top-level `return` in `main.js`, which is valid since Node wraps CommonJS modules
+  in a function); the *first*, already-running instance gets a `'second-instance'`
+  event instead, whose handler just calls `createMascotWindow()` to bring the popup
+  back up.
 - **`ipcMain`/`contextBridge`** ([main.js:103](main.js#L103), [preload.js](preload.js)) —
   the renderer can't touch Node.js or Electron APIs directly (`contextIsolation: true`,
   `nodeIntegration: false`, standard Electron security practice). `preload.js` exposes

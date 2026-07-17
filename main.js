@@ -3,6 +3,19 @@ const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 
+// ─── Single instance ───────────────────────────────────────────────────────
+// sparkY runs as a background tray app (often auto-started at login). Without
+// this lock, clicking the Start Menu/Desktop icon while it's already running
+// launches a whole second Electron process instead of just showing the
+// existing one. requestSingleInstanceLock() makes every launch after the
+// first just quit immediately; the *first* instance's 'second-instance'
+// handler (below) brings the mascot back up instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+  return; // stop this (losing) instance from doing any further setup below
+}
+
 let mascotWindow = null;
 let tray = null;
 let scheduledTasks = [];
@@ -225,6 +238,14 @@ function syncLoginItemSettings() {
     path: process.execPath,
   });
 }
+
+// A second launch attempt (e.g. clicking the Start Menu icon while sparkY is
+// already running) fires this on the first instance instead of opening a new
+// process — just bring the mascot back up.
+app.on('second-instance', () => {
+  console.log('[mascot] Second launch attempt detected — showing existing instance instead.');
+  createMascotWindow();
+});
 
 // ─── App lifecycle ────────────────────────────────────────────────────────
 app.whenReady().then(() => {
