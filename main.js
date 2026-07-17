@@ -13,6 +13,7 @@ let scheduledTasks = [];
 const DEFAULT_CONFIG = {
   trayName: 'SparkY',
   devMode: false,
+  autoStartAtLogin: true,
   schedule: [{ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], time: '09:00' }],
 };
 
@@ -211,10 +212,25 @@ function createTray() {
   tray.on('click', () => createMascotWindow());
 }
 
+// ─── Auto-start at login ───────────────────────────────────────────────────
+// Adds/removes a per-user Windows Registry Run entry — no admin rights
+// needed. Controlled by config.json's autoStartAtLogin so it can be turned
+// off without a code change/rebuild. Skipped when running unpackaged
+// (`npm start`), since process.execPath would point at the raw Electron
+// dev binary rather than the installed app.
+function syncLoginItemSettings() {
+  if (!app.isPackaged) return;
+  app.setLoginItemSettings({
+    openAtLogin: !!config.autoStartAtLogin,
+    path: process.execPath,
+  });
+}
+
 // ─── App lifecycle ────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createTray();
   startScheduledTasks();
+  syncLoginItemSettings();
 
   // devMode: true in config.json shows the mascot immediately on launch, so
   // you don't have to keep editing schedule.time to match the current time

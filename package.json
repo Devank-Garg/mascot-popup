@@ -1,6 +1,6 @@
 {
   "name": "mascot-popup",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop mascot popup scheduler",
   "author": "Yamaha Motor Solutions India",
   "main": "main.js",

@@ -3,6 +3,8 @@
 
   "devMode": true,
 
+  "autoStartAtLogin": true,
+
   "schedule": [
     { "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "time": "16:30" }
   ],

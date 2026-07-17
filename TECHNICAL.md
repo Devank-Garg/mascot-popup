@@ -120,6 +120,11 @@ defaults if it's missing or malformed.
   message sequence forever instead of auto-dismissing after one pass, so the
   popup stays up while you're iterating on it. Set to `false` before shipping
   — the tray's "Show mascot now" item still works either way.
+- `autoStartAtLogin` — when `true`, the app registers itself to launch when
+  Windows starts (a per-user Registry Run entry via `app.setLoginItemSettings`,
+  no admin rights needed). Only takes effect in a packaged/installed build —
+  skipped under `npm start`, since the dev Electron binary isn't what you'd
+  want auto-launching.
 - `schedule` — array of `{ days: [...], time: "HH:MM" }`. `days` accepts full or
   3-letter names (`"Mon"`, `"Monday"`), case-insensitive. Add as many entries as
   needed for different day/time combinations.
