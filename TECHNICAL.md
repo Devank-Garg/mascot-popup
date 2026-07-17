@@ -16,7 +16,7 @@ preload.js (contextBridge)
      (dismiss, moveWindow) — the only channel between the two worlds
 
 renderer/index.html (Electron renderer process)
-  ├─ Three.js: loads/renders the 3D mascot (assets/color_model.glb)
+  ├─ Three.js: loads/renders the 3D mascot (assets/Correct_mascot.glb)
   └─ plain HTML/CSS: the speech bubble, close button, loading/error states
 
 config.json (project root — read by BOTH main.js and the renderer)
@@ -67,24 +67,38 @@ All 3D work lives in [renderer/index.html](renderer/index.html)'s module script.
 
 - **`WebGLRenderer`** (`alpha: true`) — renders into a `<canvas>` with a transparent
   background, so the Electron window's transparency shows through around the model.
-- **`GLTFLoader`** — loads `assets/color_model.glb` (a glTF/GLB 3D model with an
-  embedded base-color/metallic-roughness/normal texture set). Textures embedded in a
-  `.glb` are extracted as `blob:` URLs internally, which is why the CSP allows
-  `blob:` for `img-src`/`connect-src`.
-- **Auto-fit/center/rotate logic** — computes the model's bounding box to scale it to
-  a consistent size (`config.mascot.sizeUnits`), center it, and lift it so its feet
-  sit at y≈0. Rotation (`config.mascot.rotationDeg`) is a fixed yaw applied once on
-  load — there's no auto-facing logic, it's just a tuned constant.
+- **`GLTFLoader`** — loads **two** models via `Promise.all`: `assets/Correct_mascot.glb`
+  (static idle pose) and `assets/bowing_mascot.glb` (has one baked animation clip,
+  `NlaTrack`). Both are added to the scene at startup and kept resident; only one is
+  `.visible` at a time (toggled in `playBow()`), so there's no load delay when the bow
+  needs to play. Textures embedded in a `.glb` are extracted as `blob:` URLs
+  internally, which is why the CSP allows `blob:` for `img-src`/`connect-src`.
+- **`prepareModel()`** — shared auto-fit/center/rotate/color-space logic applied to
+  each model independently (they don't necessarily share the same source proportions):
+  computes the model's bounding box to scale it to a consistent size
+  (`config.mascot.sizeUnits`), centers it, and lifts it so its feet sit at y≈0.
+  Rotation (`config.mascot.rotationDeg`) is a fixed yaw applied once on load — there's
+  no auto-facing logic, it's just a tuned constant, currently shared by both models.
 - **Lights** — one ambient + two directional lights (key/fill) for standard
   three-point-style lighting on the model.
-- **Shadows** — `renderer.shadowMap` + the key light's shadow camera render a
-  contact shadow onto an invisible `ShadowMaterial` plane positioned at the model's
-  feet. `ShadowMaterial` only draws pixels where a shadow falls, so the plane itself
-  never blocks the transparent background — this is what grounds the mascot instead
-  of it looking like it's floating.
-- **`AnimationMixer`** — currently plays `gltf.animations[0]` if the loaded model has
-  any baked-in clips (neither current `.glb` does). This is the hook point for the
-  waving/bowing/smiling clips being produced — see "Next: animations" below.
+- **Shadow** — a simple static "spotlight pool" blob, not a real-time shadow map: a
+  small offscreen `<canvas>` radial gradient (dark center fading to transparent) is
+  wrapped in a `CanvasTexture` and applied to a flat, unlit `MeshBasicMaterial` disc
+  (`shadowBlob`) positioned at the model's feet and sized to its footprint. Because
+  `MeshBasicMaterial` ignores scene lighting, this shape never changes with the
+  model's pose or the light angle — a deliberate simplification over an earlier
+  silhouette-tracing `ShadowMaterial` + shadow-camera approach, which was replaced
+  because it added shadow-map setup cost for a shape that's meant to look like a
+  fixed circular pool anyway, not a literal projected silhouette.
+- **`AnimationMixer`/`playBow()`** — the bow model's single clip is set to
+  `THREE.LoopOnce` with `clampWhenFinished`. `playBow()` swaps visibility from the
+  static model to the bow model, plays the clip once, waits (`sleep`) for the clip's
+  actual duration (`bowClip.duration * 1000`), then swaps back. `runMessageSequence()`
+  calls `playBow()` once before the message loop (greeting) and once after (farewell)
+  — see "The speech bubble" below for the full sequencing. If `bowing_mascot.glb` ever
+  ships with zero animation clips (as earlier exports did), `bowMixer`/`bowClip` stay
+  `null` and `playBow()` no-ops silently, so this degrades gracefully to
+  static-model-only.
 - **`OrbitControls`** — rotation only (`enablePan`/`enableZoom` are off); currently
   unused for user interaction since the model's rotation is fixed by config, but
   left wired in case click-to-spin is wanted later.
@@ -102,11 +116,19 @@ next to `#canvas-container`, not a 3D object. Its position/size come from
 `config.json` as CSS custom properties (`--bubble-x`/`--bubble-y`) and inline styles,
 so it can be retuned without touching layout code.
 
-Each time the mascot appears (scheduled or manual), `runMessageSequence()` shows
-every string in `config.json`'s `messages` array in order — each for
-`bubble.messageDisplaySeconds`, with a brief fade between — then calls
-`window.mascot.dismiss()`, which fades the window out and closes it (the tray icon
-is all that's left, ready for the next scheduled trigger or manual click).
+Each time the mascot appears (scheduled, manual, or a hover/click re-trigger),
+`runMessageSequence()` runs: a greeting bow (`playBow()`, waits for it to finish),
+then every string in `config.json`'s `messages` array in order, once through — each
+for `bubble.messageDisplaySeconds`, with a brief fade between — capped at a total of
+`bubble.autoHideSeconds` (default 15s; it breaks out of the message loop once that
+much time has elapsed, even mid-list) — then a farewell bow. It does **not** dismiss
+the window afterward — the mascot itself stays on screen indefinitely with the bubble
+hidden, until either the user closes it via the ✕ button, or hovers/clicks the mascot
+again (`pointerenter`/`click` listeners on the Three.js canvas re-trigger
+`runMessageSequence()`, bow bookends and all — guarded by a `sequenceRunning` flag so
+rapid hover/click doesn't restart or overlap an in-progress sequence). This is
+identical whether or not `devMode` is on — `devMode` only affects `main.js`'s
+launch-time behavior (see below), not this cycle.
 
 ## config.json — the one file non-engineers should edit
 
@@ -115,11 +137,12 @@ and by the renderer via `fetch('../config.json')`. Both fall back to hardcoded
 defaults if it's missing or malformed.
 
 - `trayName` — label shown on the tray icon tooltip and context menu.
-- `devMode` — when `true`: (1) shows the mascot immediately on every app
-  launch, ignoring `schedule` for that launch, and (2) the renderer loops the
-  message sequence forever instead of auto-dismissing after one pass, so the
-  popup stays up while you're iterating on it. Set to `false` before shipping
-  — the tray's "Show mascot now" item still works either way.
+- `devMode` — when `true`, shows the mascot immediately on every app launch
+  (`main.js`), ignoring `schedule` for that launch, so you don't have to keep
+  editing `schedule.time` to test. It does **not** change the message-cycle
+  behavior itself — greeting bow → messages (capped) → farewell bow → stays
+  visible until hover/click, same as when `devMode` is `false`. Set to `false`
+  before shipping — the tray's "Show mascot now" item still works either way.
 - `autoStartAtLogin` — when `true`, the app registers itself to launch when
   Windows starts (a per-user Registry Run entry via `app.setLoginItemSettings`,
   no admin rights needed). Only takes effect in a packaged/installed build —
@@ -131,7 +154,9 @@ defaults if it's missing or malformed.
 - `messages` — array of strings shown in sequence on every popup.
 - `bubble` — `offsetXPx`/`offsetYPx` (nudge from its default flex position),
   `maxWidthPx` (wrap width), `fontSizePx`, `messageDisplaySeconds` (how long each
-  message in `messages` stays on screen before advancing to the next).
+  message in `messages` stays on screen before advancing to the next),
+  `autoHideSeconds` (total time the bubble stays visible per trigger before hiding —
+  see "The speech bubble" above).
 - `mascot` — `sizeUnits` (overall model scale), `rotationDeg` (facing angle).
 
 ## Building for distribution
@@ -187,11 +212,16 @@ If Three.js is ever upgraded, re-copy those same three files from the new
 `node_modules/three/examples/jsm/` into `renderer/vendor/three-addons/`
 (same relative structure) rather than reverting the import map.
 
-## Next: animations
+## Next: more animations
 
-The mascot models currently have no baked animation clips or skeleton — they're
-static meshes. Once rigged/animated `.glb` exports (wave, bow, smile, idle, etc.)
-are ready, the single `mixer.clipAction(gltf.animations[0]).play()` call needs to
-become a small clip-name lookup with crossfading (`fadeIn`/`fadeOut` between actions)
-so a specific move can be triggered per popup instead of always playing whatever
-clip happens to be first in the file.
+`bowing_mascot.glb` is the first rigged/animated export with a real baked clip
+(`NlaTrack`) — wired up as the greeting/farewell bow (see `playBow()` above).
+`Correct_mascot.glb`, the idle static model, still has no clips/skeleton.
+
+As more moves are produced (wave, smile, other idle variants), the current
+one-bow-model setup will need to generalize: today `playBow()`/`bowMixer`/`bowClip`
+are hardcoded to a single extra model and a single clip. A next iteration would swap
+that for a small clip-name-keyed lookup (potentially still separate `.glb` files per
+move, given none of the exports so far combine multiple clips in one file) with
+crossfading (`fadeIn`/`fadeOut` between actions) so a specific move can be selected
+per popup instead of it always being "bow".

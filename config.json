@@ -6,7 +6,7 @@
   "autoStartAtLogin": true,
 
   "schedule": [
-    { "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "time": "16:30" }
+    { "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "time": "13:54" }
   ],
 
   "messages": [
@@ -20,11 +20,14 @@
     "offsetYPx": -19,
     "maxWidthPx": 130,
     "fontSizePx": 10,
-    "messageDisplaySeconds": 4.5
+    "messageDisplaySeconds": 4.5,
+    "autoHideSeconds": 15,
+    "greetingMessage": "👋 Hi there!",
+    "goodbyeMessage": "👋 See you next time!"
   },
 
   "mascot": {
     "sizeUnits": 0.9,
-    "rotationDeg": -81.8
+    "rotationDeg": 0
   }
 }

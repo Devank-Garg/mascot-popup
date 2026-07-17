@@ -117,7 +117,6 @@
       max-width: 130px;
       background: #ffffff;
       color: #1a1a1a;
-      border: 2px solid #c8102e;
       font-family: system-ui, sans-serif;
       font-size: 10px;
       line-height: 1.35;
@@ -157,26 +156,15 @@
     }
 
     /* Speech-bubble tail (pointed, not a thought-bubble's round puffs) —
-       an outer red triangle behind a slightly smaller white one creates
-       the appearance of a bordered pointer aimed at the mascot. */
-    #speech-bubble::before {
-      content: "";
-      position: absolute;
-      right: -16px;
-      top: 50%;
-      transform: translateY(-50%);
-      border-style: solid;
-      border-width: 9px 0 9px 16px;
-      border-color: transparent transparent transparent #c8102e;
-    }
+       plain white, no border, aimed at the mascot. */
     #speech-bubble::after {
       content: "";
       position: absolute;
-      right: -12.5px;
+      right: -14px;
       top: 50%;
       transform: translateY(-50%);
       border-style: solid;
-      border-width: 7px 0 7px 13px;
+      border-width: 8px 0 8px 14px;
       border-color: transparent transparent transparent #ffffff;
     }
   </style>
@@ -243,7 +231,11 @@
       messages: [
         "👋 Hi there! Small acts of inclusion make a big difference.",
       ],
-      bubble: { offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10, messageDisplaySeconds: 4.5 },
+      bubble: {
+        offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10,
+        messageDisplaySeconds: 4.5, autoHideSeconds: 15,
+        greetingMessage: '👋 Hi there!', goodbyeMessage: '👋 See you next time!',
+      },
       mascot: { sizeUnits: 0.9, rotationDeg: -81.8 },
     };
 
@@ -284,28 +276,42 @@
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    // Show every configured message in turn, then hand control back to the
-    // main process to fade the window out to the tray. In devMode, loop
-    // forever instead so the popup stays up while you're iterating on it.
+    let sequenceRunning = false;
+
+    // Plays a greeting bow, shows every configured message in turn once
+    // (capped at bubble.autoHideSeconds total), then plays a farewell bow
+    // before settling back on the static idle model. The mascot itself stays
+    // on screen indefinitely afterward (no auto-dismiss) — hovering/clicking
+    // it re-triggers this whole sequence (see the pointerenter/click
+    // listeners below). This behavior is the same whether or not devMode is
+    // on — devMode only affects main.js's "show immediately on launch,
+    // ignoring the schedule" behavior, not this cycle.
     async function runMessageSequence() {
+      if (sequenceRunning) return;
+      sequenceRunning = true;
+
+      await playBow(config.bubble.greetingMessage);
+
       const displayMs = Math.max(500, (config.bubble.messageDisplaySeconds || 4.5) * 1000);
-      do {
-        for (const message of MESSAGES) {
-          showSpeechBubble(message);
-          await sleep(displayMs);
-          hideSpeechBubble();
-          await sleep(350); // let the fade-out finish before the next message
-        }
-      } while (config.devMode);
-      window.mascot.dismiss();
+      const capMs = Math.max(1000, (config.bubble.autoHideSeconds || 15) * 1000);
+      const start = Date.now();
+      for (const message of MESSAGES) {
+        if (Date.now() - start >= capMs) break;
+        showSpeechBubble(message);
+        await sleep(displayMs);
+        hideSpeechBubble();
+        await sleep(350); // let the fade-out finish before the next message
+      }
+
+      await playBow(config.bubble.goodbyeMessage);
+
+      sequenceRunning = false;
     }
 
     // ── Renderer ──────────────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
     container.appendChild(renderer.domElement);
 
@@ -328,34 +334,40 @@
 
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
     keyLight.position.set(3, 5, 3);
-    keyLight.castShadow = true;
-    // Tight shadow-camera frustum since the mascot is only ~1 unit tall —
-    // keeps the shadow map resolution focused instead of spread over a huge area.
-    keyLight.shadow.mapSize.set(1024, 1024);
-    keyLight.shadow.camera.near = 0.1;
-    keyLight.shadow.camera.far = 10;
-    keyLight.shadow.camera.left = -1.5;
-    keyLight.shadow.camera.right = 1.5;
-    keyLight.shadow.camera.top = 1.5;
-    keyLight.shadow.camera.bottom = -1.5;
-    keyLight.shadow.bias = -0.002;
-    keyLight.shadow.radius = 4;
     scene.add(keyLight);
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
     fillLight.position.set(-3, 2, -3);
     scene.add(fillLight);
 
-    // Invisible shadow-catcher plane — only its shadowed area renders (as
-    // translucent dark), so the transparent window background shows through
-    // everywhere else. Grounds the mascot instead of leaving it floating.
-    const shadowPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 6),
-      new THREE.ShadowMaterial({ opacity: 0.35 })
+    // Simple static circular "spotlight pool" blob shadow — a soft radial-gradient
+    // texture on a flat disc, always the same shape regardless of light/model pose
+    // (unlike a real shadow map, which would trace the model's actual silhouette).
+    function createBlobShadowTexture() {
+      const size = 128;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      gradient.addColorStop(0, 'rgba(0,0,0,0.45)');
+      gradient.addColorStop(0.7, 'rgba(0,0,0,0.25)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    const shadowBlob = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: createBlobShadowTexture(),
+        transparent: true,
+        depthWrite: false,
+      })
     );
-    shadowPlane.rotation.x = -Math.PI / 2;
-    shadowPlane.receiveShadow = true;
-    scene.add(shadowPlane);
+    shadowBlob.rotation.x = -Math.PI / 2;
+    scene.add(shadowBlob);
 
     // Improve color rendering for sRGB glTF textures and materials
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -371,130 +383,199 @@
       controls.target.set(0, 0.8, 0);
     controls.update();
 
-    // ── Load the GLB ──────────────────────────────────────────────────────
+    // ── Load both GLBs (static idle + animated bow) ─────────────────────────
     const loader = new GLTFLoader();
-    const glbPath = '../assets/color_model.glb';
-    console.log('[mascot] Attempting to load GLB:', glbPath);
-    loader.load(
-      glbPath,
+    const STATIC_GLB_PATH = '../assets/Correct_mascot.glb';
+    const BOW_GLB_PATH = '../assets/bowing_mascot.glb';
 
-      // onLoad
-      (gltf) => {
+    function loadGLTF(path) {
+      return new Promise((resolve, reject) => {
+        console.log('[mascot] Attempting to load GLB:', path);
+        loader.load(
+          path,
+          resolve,
+          (xhr) => {
+            const pct = Math.round((xhr.loaded / xhr.total) * 100);
+            const span = loadingEl.querySelector('span');
+            if (span) span.textContent = `Loading… ${pct}%`;
+          },
+          reject
+        );
+      });
+    }
+
+    // Centers/scales/rotates a loaded model the same way regardless of its
+    // own source proportions, and fixes up material color spaces. Returns
+    // the model's post-fit bounding box (used for shadow placement).
+    function prepareModel(model) {
+      const rotY = config.mascot.rotationDeg * (Math.PI / 180);
+
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = config.mascot.sizeUnits / maxDim;
+
+      model.scale.setScalar(scale);
+      model.position.sub(center.multiplyScalar(scale));
+
+      // Ensure the model's bottom sits above the scene origin so legs aren't cut off
+      box.setFromObject(model);
+      const minY = box.min.y;
+      if (Number.isFinite(minY)) {
+        model.position.y -= (minY - 0.02);
+      }
+
+      model.rotation.y = rotY;
+
+      box.setFromObject(model);
+
+      model.traverse((node) => {
+        if (node.isMesh && node.material) {
+          const mat = node.material;
+          ['map', 'emissiveMap'].forEach((k) => {
+            if (mat[k] && mat[k].colorSpace !== THREE.SRGBColorSpace) {
+              mat[k].colorSpace = THREE.SRGBColorSpace;
+            }
+          });
+          mat.needsUpdate = true;
+        }
+      });
+
+      return { model, box, size, scale };
+    }
+
+    let bowMixer = null;
+    let bowClip = null;
+    let bowClipDurationMs = 1500;
+
+    const CROSSFADE_MS = 300;
+
+    function setModelOpacity(model, opacity) {
+      model.traverse((node) => {
+        if (node.isMesh && node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((mat) => {
+            mat.transparent = true;
+            mat.opacity = opacity;
+            mat.needsUpdate = true;
+          });
+        }
+      });
+    }
+
+    // Smoothly fades hideModel out while fading showModel in (instead of an
+    // instant visibility toggle), so switching between the static and bow
+    // models doesn't look like an abrupt pop.
+    function crossfadeModels(hideModel, showModel, durationMs = CROSSFADE_MS) {
+      return new Promise((resolve) => {
+        if (showModel) {
+          showModel.visible = true;
+          setModelOpacity(showModel, 0);
+        }
+        const start = Date.now();
+        function step() {
+          const t = Math.min(1, (Date.now() - start) / durationMs);
+          if (hideModel) setModelOpacity(hideModel, 1 - t);
+          if (showModel) setModelOpacity(showModel, t);
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            if (hideModel) {
+              hideModel.visible = false;
+              setModelOpacity(hideModel, 1); // reset so it's ready for next time
+            }
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    // Plays the bow animation once (if available), showing an optional
+    // greeting/goodbye bubble message alongside it, and waits for it to
+    // finish before crossfading back to the static model. No-ops silently
+    // (aside from a brief text-only flash) if the bow model has no
+    // animation clip.
+    async function playBow(text) {
+      if (!bowMixer || !bowClip) {
+        if (text) {
+          showSpeechBubble(text);
+          await sleep(1500);
+          hideSpeechBubble();
+          await sleep(350);
+        }
+        return;
+      }
+
+      await crossfadeModels(staticModel, bowModel);
+      bowMixer.stopAllAction();
+      bowMixer.clipAction(bowClip).reset().play();
+      if (text) showSpeechBubble(text);
+
+      await sleep(bowClipDurationMs);
+
+      if (text) {
+        hideSpeechBubble();
+        await sleep(350); // let the bubble fade out before the bow ends
+      }
+      await crossfadeModels(bowModel, staticModel);
+    }
+
+    let staticModel, bowModel;
+
+    Promise.all([loadGLTF(STATIC_GLB_PATH), loadGLTF(BOW_GLB_PATH)])
+      .then(([staticGltf, bowGltf]) => {
         loadingEl.style.display = 'none';
-        console.log('[mascot] GLTF loaded:', gltf);
+        console.log('[mascot] Both GLBs loaded');
 
-        const model = gltf.scene;
-          // Default yaw to apply to the model, sourced from config.json (degrees).
-          const DEFAULT_MODEL_ROT_Y = config.mascot.rotationDeg * (Math.PI / 180);
+        const staticFit = prepareModel(staticGltf.scene);
+        const bowFit = prepareModel(bowGltf.scene);
 
-        // Centre and fit the model automatically
-        const box = new THREE.Box3().setFromObject(model);
-        const size   = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale  = config.mascot.sizeUnits / maxDim;
+        staticModel = staticFit.model;
+        bowModel = bowFit.model;
+        bowModel.visible = false;
 
-        model.scale.setScalar(scale);
-        model.position.sub(center.multiplyScalar(scale));
+        scene.add(staticModel);
+        scene.add(bowModel);
 
-        // Ensure the model's bottom sits above the scene origin so legs aren't cut off
-        // Recompute bounding box after scaling/centering and lift if needed.
-        box.setFromObject(model);
-        const minY = box.min.y;
-        if (Number.isFinite(minY)) {
-          // Move model up so minY becomes a small positive value (padding 0.02)
-          model.position.y -= (minY - 0.02);
+        // Align controls/camera to the static (idle) model's center
+        const modelCenter = staticFit.box.getCenter(new THREE.Vector3());
+        controls.target.copy(modelCenter);
+        camera.lookAt(modelCenter);
+
+        // Sit the blob shadow at the static model's feet, sized to its footprint
+        const footprint = Math.max(staticFit.size.x, staticFit.size.z) * staticFit.scale;
+        shadowBlob.scale.set(footprint * 1.3, footprint * 1.3, 1);
+        shadowBlob.position.set(modelCenter.x, staticFit.box.min.y, modelCenter.z);
+
+        if (bowGltf.animations.length > 0) {
+          bowClip = bowGltf.animations[0];
+          bowClipDurationMs = Math.max(500, bowClip.duration * 1000);
+          bowMixer = new THREE.AnimationMixer(bowModel);
+          const action = bowMixer.clipAction(bowClip);
+          action.setLoop(THREE.LoopOnce);
+          action.clampWhenFinished = true;
         }
 
-          // Apply default rotation so the model faces the camera correctly out-of-the-box
-          model.rotation.y = DEFAULT_MODEL_ROT_Y;
-
-          // Recompute center and align controls/camera to the model center
-          box.setFromObject(model);
-          const modelCenter = box.getCenter(new THREE.Vector3());
-          controls.target.copy(modelCenter);
-          camera.lookAt(modelCenter);
-
-          // Sit the shadow-catcher plane right at the model's feet
-          shadowPlane.position.y = box.min.y;
-
-        // Ensure mesh materials use correct color space for textures and receive shadows
-        model.traverse((node) => {
-          if (node.isMesh) {
-            const mat = node.material;
-            if (mat) {
-              // Log material info for debugging colors
-              try {
-                console.log('[mascot] mesh:', node.name || '(unnamed)', 'material:', mat.type, 'color:', mat.color ? mat.color.getHexString() : null);
-                if (mat.map) console.log('[mascot]  has map (texture) - uuid:', mat.map.uuid);
-                if (mat.emissiveMap) console.log('[mascot]  has emissiveMap - uuid:', mat.emissiveMap.uuid);
-                if (mat.metalnessMap) console.log('[mascot]  has metalnessMap - uuid:', mat.metalnessMap.uuid);
-              } catch (e) {
-                console.warn('[mascot] failed to read material info', e);
-              }
-              // Ensure common texture maps are interpreted as sRGB for correct colors
-              // (base material color is already treated as sRGB by three's color management,
-              // and GLTFLoader sets colorSpace on these maps automatically — this just guards
-              // against any that slipped through as linear)
-              ['map', 'emissiveMap'].forEach((k) => {
-                if (mat[k] && mat[k].colorSpace !== THREE.SRGBColorSpace) {
-                  mat[k].colorSpace = THREE.SRGBColorSpace;
-                }
-              });
-
-              // Normal and metallic/roughness maps should remain linear (do not change)
-
-              mat.needsUpdate = true;
-            }
-            node.castShadow = true;
-            node.receiveShadow = true;
-          }
+        const clock = new THREE.Clock();
+        renderer.setAnimationLoop(() => {
+          const delta = clock.getDelta();
+          if (bowMixer) bowMixer.update(delta);
+          // Keep renderer/camera size and DPR in sync (fixes scaling when window moves between displays)
+          ensureRendererSize();
+          controls.update();
+          renderer.render(scene, camera);
         });
 
-        scene.add(model);
-
-        // Cycle through every configured message, then dismiss back to the tray
         setTimeout(() => runMessageSequence(), 400);
-
-        // Play the first animation clip if present
-        if (gltf.animations.length > 0) {
-          const mixer = new THREE.AnimationMixer(model);
-          mixer.clipAction(gltf.animations[0]).play();
-
-          const clock = new THREE.Clock();
-          renderer.setAnimationLoop(() => {
-            const delta = clock.getDelta();
-            mixer.update(delta);
-            // Keep renderer/camera size and DPR in sync (fixes scaling when window moves between displays)
-            ensureRendererSize();
-            controls.update();
-            renderer.render(scene, camera);
-          });
-        } else {
-          renderer.setAnimationLoop(() => {
-            // Keep renderer/camera size and DPR in sync
-            ensureRendererSize();
-            controls.update();
-            renderer.render(scene, camera);
-          });
-        }
-      },
-
-      // onProgress
-      (xhr) => {
-        const pct = Math.round((xhr.loaded / xhr.total) * 100);
-        const span = loadingEl.querySelector('span');
-        if (span) span.textContent = `Loading… ${pct}%`;
-      },
-
-      // onError
-      (err) => {
+      })
+      .catch((err) => {
         loadingEl.style.display = 'none';
         errorEl.classList.add('visible');
         errorDetail.textContent = String(err.message || err);
         console.error('GLTFLoader error:', err);
-      }
-    );
+      });
 
     // ── Resize handler ─────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
@@ -528,6 +609,12 @@
     closeBtn.addEventListener('click', () => {
       window.mascot.dismiss();
     });
+
+    // ── Hover/click the mascot to bring the message sequence back ──────────
+    // (runMessageSequence() no-ops if it's already running, so rapid
+    // hover/click doesn't restart or overlap an in-progress sequence.)
+    renderer.domElement.addEventListener('pointerenter', () => runMessageSequence());
+    renderer.domElement.addEventListener('click', () => runMessageSequence());
 
     // ── Right-drag to move the window (left-drag is reserved for
     // OrbitControls' rotate gesture). ──────────────────────────────────────
