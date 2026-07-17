@@ -129,6 +129,29 @@ defaults if it's missing or malformed.
   message in `messages` stays on screen before advancing to the next).
 - `mascot` — `sizeUnits` (overall model scale), `rotationDeg` (facing angle).
 
+## Building for distribution
+
+`npm run build` (= `electron-builder --win --x64`) produces
+`dist/Mascot Popup 1.0.0.msi` — an MSI installer, chosen specifically so it
+plugs into Intune/SCCM/GPO managed deployment (native silent install/uninstall
+and versioning, unlike a plain NSIS EXE). Key `package.json` `build` settings:
+
+- `win.target: "msi"` / `msi.upgradeCode` — the upgrade code is a fixed GUID
+  that must **stay the same** across future version bumps, or Windows/Intune
+  will treat each release as an unrelated product instead of an upgrade.
+- `msi.oneClick` + `runAfterFinish` — silent install, mascot launches right after.
+- `files` — everything that must ship inside the installer (note: `electron`
+  itself must stay a `devDependency`, not a `dependency` — electron-builder
+  bundles the Electron runtime separately and errors if it finds `electron`
+  listed as a regular dependency).
+- `assets/tray-icon.png` was resized/padded to a square 256×256 canvas —
+  electron-builder needs a square source image to generate a proper Windows
+  `.ico` for the installer/taskbar icon; a non-square source can fail or
+  produce a squashed icon.
+
+For silent deployment via Intune, the generated MSI already supports the
+standard `msiexec /i "Mascot Popup 1.0.0.msi" /quiet` install command.
+
 ## Next: animations
 
 The mascot models currently have no baked animation clips or skeleton — they're

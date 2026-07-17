@@ -2,6 +2,7 @@
   "name": "mascot-popup",
   "version": "1.0.0",
   "description": "Desktop mascot popup scheduler",
+  "author": "Yamaha Motor Solutions India",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,12 +16,13 @@
       "output": "dist"
     },
     "win": {
-      "target": "nsis",
+      "target": "msi",
       "icon": "assets/tray-icon.png"
     },
-    "nsis": {
+    "msi": {
       "oneClick": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "upgradeCode": "6f2a8b6e-6c5b-4a3d-9c2e-2f5a7b1d9e10"
     },
     "files": [
       "main.js",
@@ -29,20 +31,14 @@
       "renderer/**",
       "assets/**",
       "node_modules/**"
-    ],
-    "extraFiles": [
-      {
-        "from": "assets/mascot.glb",
-        "to": "assets/mascot.glb"
-      }
     ]
   },
   "dependencies": {
-    "electron": "^43.1.1",
     "node-cron": "^4.6.0",
     "three": "^0.177.0"
   },
   "devDependencies": {
+    "electron": "^43.1.1",
     "electron-builder": "^26.0.12"
   }
 }
