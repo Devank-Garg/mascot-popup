@@ -11,7 +11,7 @@
   },
   "build": {
     "appId": "com.ymsli.mascot-popup",
-    "productName": "Mascot Popup",
+    "productName": "sparkY",
     "directories": {
       "output": "dist"
     },
