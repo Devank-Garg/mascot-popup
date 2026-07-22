@@ -19,7 +19,7 @@
     "offsetXPx": 52,
     "offsetYPx": -19,
     "maxWidthPx": 130,
-    "fontSizePx": 10,
+    "fontSizePx": 15,
     "messageDisplaySeconds": 4.5,
     "autoHideSeconds": 15,
     "greetingMessage": "👋 Hi there!",

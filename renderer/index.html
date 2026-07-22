@@ -108,6 +108,19 @@
     }
     #error-msg.visible { display: flex; }
 
+    @font-face {
+      font-family: 'DM Sans';
+      font-style: normal;
+      font-weight: 400;
+      src: url('./vendor/fonts/DMSans-Regular.ttf') format('truetype');
+    }
+    @font-face {
+      font-family: 'DM Sans';
+      font-style: normal;
+      font-weight: 700;
+      src: url('./vendor/fonts/DMSans-Bold.ttf') format('truetype');
+    }
+
     /* Cloud-style speech bubble — sits beside the mascot, tail points right */
     #speech-bubble {
       position: relative;
@@ -117,8 +130,8 @@
       max-width: 130px;
       background: #ffffff;
       color: #1a1a1a;
-      font-family: system-ui, sans-serif;
-      font-size: 10px;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 12px;
       line-height: 1.35;
       text-align: center;
       padding: 8px 10px;
@@ -232,7 +245,7 @@
         "👋 Hi there! Small acts of inclusion make a big difference.",
       ],
       bubble: {
-        offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 10,
+        offsetXPx: 52, offsetYPx: -19, maxWidthPx: 130, fontSizePx: 15,
         messageDisplaySeconds: 4.5, autoHideSeconds: 15,
         greetingMessage: '👋 Hi there!', goodbyeMessage: '👋 See you next time!',
       },
@@ -385,7 +398,7 @@
 
     // ── Load both GLBs (static idle + animated bow) ─────────────────────────
     const loader = new GLTFLoader();
-    const STATIC_GLB_PATH = '../assets/Correct_mascot.glb';
+    const STATIC_GLB_PATH = '../assets/DEI_mascot.glb';
     const BOW_GLB_PATH = '../assets/bowing_mascot.glb';
 
     function loadGLTF(path) {
